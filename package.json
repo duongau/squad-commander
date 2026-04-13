@@ -11,16 +11,24 @@
     "test:watch": "vitest",
     "lint": "tsc --noEmit"
   },
-  "keywords": ["squad", "copilot", "orchestration", "electron", "ai-agents"],
+  "keywords": [
+    "squad",
+    "copilot",
+    "orchestration",
+    "electron",
+    "ai-agents"
+  ],
   "author": "duongau",
   "license": "MIT",
   "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
     "@xyflow/react": "^12.10.2",
     "chokidar": "^5.0.0",
     "gray-matter": "^4.0.3",
     "node-cron": "^4.2.1",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
+    "react-markdown": "^10.1.0",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
