@@ -1,0 +1,33 @@
+{
+  "id": "research-and-write",
+  "name": "Research & Write Pipeline",
+  "description": "Research a topic, outline, draft, review, and finalize.",
+  "version": 1,
+  "variables": [
+    { "name": "topic", "type": "string", "required": true, "default": "" },
+    { "name": "audience", "type": "string", "required": false, "default": "developers" }
+  ],
+  "steps": [
+    { "id": "start", "type": "start" },
+    { "id": "research", "type": "task", "agent": "keaton", "prompt": "Research {{topic}} thoroughly for an audience of {{audience}}. Gather key facts, examples, and references.", "timeout": 600 },
+    { "id": "outline", "type": "task", "agent": "verbal", "prompt": "Create a detailed outline for a document about {{topic}} based on the research." },
+    { "id": "draft", "type": "task", "agent": "mcmanus", "prompt": "Write a complete draft based on the outline. Target audience: {{audience}}." },
+    { "id": "gate-review", "type": "approval", "message": "Review the draft before finalizing. Approve to continue or reject to stop." },
+    { "id": "finalize", "type": "task", "agent": "mcmanus", "prompt": "Polish and finalize the document. Fix any issues noted during review." },
+    { "id": "end", "type": "end" }
+  ],
+  "edges": [
+    { "source": "start", "target": "research" },
+    { "source": "research", "target": "outline" },
+    { "source": "outline", "target": "draft" },
+    { "source": "draft", "target": "gate-review" },
+    { "source": "gate-review", "target": "finalize" },
+    { "source": "finalize", "target": "end" }
+  ],
+  "metadata": {
+    "created": "2026-04-13T00:00:00Z",
+    "modified": "2026-04-13T00:00:00Z",
+    "tags": ["research", "writing", "content"],
+    "template": true
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "id": "code-review",
+  "name": "Code Review Pipeline",
+  "description": "Analyze code, review for quality, and report findings.",
+  "version": 1,
+  "variables": [
+    { "name": "target", "type": "string", "required": true, "default": "" },
+    { "name": "scope", "type": "string", "required": false, "default": "full" }
+  ],
+  "steps": [
+    { "id": "start", "type": "start" },
+    { "id": "analyze", "type": "task", "agent": "keaton", "prompt": "Analyze {{target}} with scope {{scope}}. Identify architecture concerns and code quality issues.", "timeout": 300 },
+    { "id": "review", "type": "task", "agent": "hockney", "prompt": "Review the analysis and verify test coverage for {{target}}.", "timeout": 300 },
+    { "id": "check-quality", "type": "condition", "eval": "step.review.success", "trueTarget": "report-pass", "falseTarget": "report-fail" },
+    { "id": "report-pass", "type": "task", "agent": "mcmanus", "prompt": "Write a positive review summary for {{target}}." },
+    { "id": "report-fail", "type": "task", "agent": "mcmanus", "prompt": "Write a detailed failure report for {{target}} with remediation steps." },
+    { "id": "end", "type": "end" }
+  ],
+  "edges": [
+    { "source": "start", "target": "analyze" },
+    { "source": "analyze", "target": "review" },
+    { "source": "review", "target": "check-quality" },
+    { "source": "report-pass", "target": "end" },
+    { "source": "report-fail", "target": "end" }
+  ],
+  "metadata": {
+    "created": "2026-04-13T00:00:00Z",
+    "modified": "2026-04-13T00:00:00Z",
+    "tags": ["code-review", "quality"],
+    "template": true
+  }
+}

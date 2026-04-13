@@ -1,0 +1,29 @@
+{
+  "id": "multi-reviewer",
+  "name": "Multi-Reviewer Pipeline",
+  "description": "Three agents review in parallel, then merge feedback.",
+  "version": 1,
+  "variables": [
+    { "name": "subject", "type": "string", "required": true, "default": "" }
+  ],
+  "steps": [
+    { "id": "start", "type": "start" },
+    { "id": "fan-out", "type": "parallel", "children": ["review-arch", "review-code", "review-tests"], "fanIn": "all" },
+    { "id": "review-arch", "type": "task", "agent": "keaton", "prompt": "Review the architecture of {{subject}}." },
+    { "id": "review-code", "type": "task", "agent": "edie", "prompt": "Review the code quality and type safety of {{subject}}." },
+    { "id": "review-tests", "type": "task", "agent": "hockney", "prompt": "Review the test coverage and edge cases for {{subject}}." },
+    { "id": "merge", "type": "task", "agent": "mcmanus", "prompt": "Merge and synthesize all review feedback into a single report." },
+    { "id": "end", "type": "end" }
+  ],
+  "edges": [
+    { "source": "start", "target": "fan-out" },
+    { "source": "fan-out", "target": "merge" },
+    { "source": "merge", "target": "end" }
+  ],
+  "metadata": {
+    "created": "2026-04-13T00:00:00Z",
+    "modified": "2026-04-13T00:00:00Z",
+    "tags": ["review", "parallel", "consensus"],
+    "template": true
+  }
+}

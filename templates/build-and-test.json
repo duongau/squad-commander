@@ -1,0 +1,28 @@
+{
+  "id": "build-and-test",
+  "name": "Build & Test Pipeline",
+  "description": "Build, test, fix if failing, re-test in a loop.",
+  "version": 1,
+  "variables": [
+    { "name": "project_path", "type": "string", "required": false, "default": "." }
+  ],
+  "steps": [
+    { "id": "start", "type": "start" },
+    { "id": "build", "type": "task", "agent": "fenster", "prompt": "Build the project at {{project_path}}. Report any build errors.", "timeout": 600 },
+    { "id": "fix-loop", "type": "loop", "body": ["fix", "retest"], "condition": "step.retest.success === true", "maxIterations": 3 },
+    { "id": "fix", "type": "task", "agent": "fenster", "prompt": "Fix the build/test errors found in the previous step." },
+    { "id": "retest", "type": "task", "agent": "hockney", "prompt": "Run the test suite and report results." },
+    { "id": "end", "type": "end" }
+  ],
+  "edges": [
+    { "source": "start", "target": "build" },
+    { "source": "build", "target": "fix-loop" },
+    { "source": "fix-loop", "target": "end" }
+  ],
+  "metadata": {
+    "created": "2026-04-13T00:00:00Z",
+    "modified": "2026-04-13T00:00:00Z",
+    "tags": ["build", "test", "ci"],
+    "template": true
+  }
+}
