@@ -45,7 +45,7 @@ describe('ContextBuilder', () => {
     expect(fs.existsSync(contextPath)).toBe(true);
 
     const content = fs.readFileSync(contextPath, 'utf-8');
-    expect(content).toContain('# Agent Charter');
+    expect(content).toContain('# Agent');
     expect(content).toContain('Keaton');
     expect(content).toContain('# Objective');
     expect(content).toContain('Analyze the architecture');
@@ -55,12 +55,12 @@ describe('ContextBuilder', () => {
     const contextPath = await builder.build({
       agent: 'keaton',
       prompt: 'Review code',
-      includeDecisions: true,
+      contextSize: 'full',
       outputDir: path.join(tmpDir, 'output'),
     });
 
     const content = fs.readFileSync(contextPath, 'utf-8');
-    expect(content).toContain('# Recent Team Decisions');
+    expect(content).toContain('# Recent Decisions');
     expect(content).toContain('strict TypeScript');
   });
 
@@ -68,12 +68,12 @@ describe('ContextBuilder', () => {
     const contextPath = await builder.build({
       agent: 'keaton',
       prompt: 'Quick task',
-      includeDecisions: false,
+      contextSize: 'minimal',
       outputDir: path.join(tmpDir, 'output'),
     });
 
     const content = fs.readFileSync(contextPath, 'utf-8');
-    expect(content).not.toContain('# Recent Team Decisions');
+    expect(content).not.toContain('# Recent Decisions');
   });
 
   it('includes prior output when provided', async () => {
@@ -85,7 +85,7 @@ describe('ContextBuilder', () => {
     });
 
     const content = fs.readFileSync(contextPath, 'utf-8');
-    expect(content).toContain('# Context from Previous Step');
+    expect(content).toContain('# Previous Step Output');
     expect(content).toContain('3 bugs');
   });
 
@@ -97,18 +97,21 @@ describe('ContextBuilder', () => {
     });
 
     const content = fs.readFileSync(contextPath, 'utf-8');
-    expect(content).toContain('No charter found');
+    expect(content).toContain('Agent: nonexistent');
     expect(content).toContain('# Objective');
   });
 
-  it('includes output instructions', async () => {
+  it('minimal mode only includes prompt', async () => {
     const contextPath = await builder.build({
       agent: 'keaton',
-      prompt: 'Test',
+      prompt: 'Just do this',
+      contextSize: 'minimal',
       outputDir: path.join(tmpDir, 'output'),
     });
 
     const content = fs.readFileSync(contextPath, 'utf-8');
-    expect(content).toContain('# Output Instructions');
+    expect(content).toContain('Just do this');
+    expect(content).not.toContain('# Agent');
+    expect(content).not.toContain('# Objective');
   });
 });

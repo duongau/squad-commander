@@ -88,10 +88,23 @@ export class WebhookServer extends EventEmitter {
       return;
     }
 
-    // Read body
+    // Read body (with size limit)
+    const MAX_BODY_SIZE = 1024 * 1024; // 1MB
     let body = '';
-    req.on('data', (chunk) => { body += chunk; });
+    let oversized = false;
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > MAX_BODY_SIZE) {
+        oversized = true;
+        req.destroy();
+      }
+    });
     req.on('end', () => {
+      if (oversized) {
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Payload too large' }));
+        return;
+      }
       endpoint.lastTriggered = new Date().toISOString();
       endpoint.triggerCount++;
 

@@ -96,6 +96,7 @@ contextBridge.exposeInMainWorld('commander', {
     updateConfig: (updates: unknown) => ipcRenderer.invoke('costs:updateConfig', updates),
     setBudget: (tokens: number) => ipcRenderer.invoke('costs:setBudget', tokens),
     getDailyUsage: () => ipcRenderer.invoke('costs:getDailyUsage'),
+    estimateRun: (pipelineId: string) => ipcRenderer.invoke('costs:estimateRun', pipelineId),
   },
 
   // MCP Connector
@@ -140,6 +141,7 @@ contextBridge.exposeInMainWorld('commander', {
       'schedule:event',
       'cost:update',
       'cost:budget-exceeded',
+      'cost:step-budget-exceeded',
     ];
     if (validChannels.includes(channel)) {
       const listener = (_event: unknown, ...args: unknown[]) =>

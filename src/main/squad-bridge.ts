@@ -33,7 +33,19 @@ export class SquadBridge {
     const content = fs.readFileSync(teamFile, 'utf-8');
     const { data, content: body } = matter(content);
 
-    // Extract member names from the body (look for @mentions or list items)
+    // Prefer frontmatter members array (most reliable for real Squad projects)
+    const frontmatterMembers = Array.isArray(data.members) ? data.members as string[] : [];
+
+    if (frontmatterMembers.length > 0) {
+      return {
+        name: (data.name as string) || '',
+        description: (data.description as string) || '',
+        projectContext: (data.projectContext as string) || '',
+        members: frontmatterMembers,
+      };
+    }
+
+    // Fallback: extract @mentions from body
     const members: string[] = [];
     const memberPattern = /@(\w+)/g;
     let match;
@@ -41,7 +53,7 @@ export class SquadBridge {
       members.push(match[1]);
     }
 
-    // Also check for list items like "- name" or "* name"
+    // Fallback: list items like "- name"
     if (members.length === 0) {
       const listPattern = /^[\s]*[-*]\s+(\w+)/gm;
       while ((match = listPattern.exec(body)) !== null) {
@@ -53,7 +65,7 @@ export class SquadBridge {
       name: (data.name as string) || '',
       description: (data.description as string) || '',
       projectContext: (data.projectContext as string) || '',
-      members: members.length > 0 ? members : (data.members as string[]) || [],
+      members,
     };
   }
 

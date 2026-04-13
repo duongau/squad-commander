@@ -15,6 +15,7 @@ import { CostTracker } from './cost-tracker';
 import { McpConnector } from './mcp-connector';
 import { WebhookServer } from './webhook-server';
 import { NotificationChannels } from './notification-channels';
+import type { Pipeline } from '../shared/types';
 import { NotificationService } from './notification';
 import { IPC } from '../shared/ipc-channels';
 import { randomUUID } from 'crypto';
@@ -192,6 +193,52 @@ ipcMain.handle(IPC.SQUAD_DELETE_AGENT, async (_event, name: string) => {
   return squadBridge.deleteAgent(name);
 });
 
+ipcMain.handle(IPC.SQUAD_REPARENT_AGENT, async (_event, name: string, _newParent: string) => {
+  if (!squadBridge) throw new Error('No project open');
+  // Reparenting requires updating team.md — defer to Squad CLI for now
+  throw new Error('Reparenting is not yet implemented. Use Squad CLI to modify team.md.');
+});
+
+// ─── Cost-Tracked Pipeline Execution Helper ──────────────────────────────────
+
+/** Run a pipeline with full cost tracking. Used by manual runs, scheduler, and webhooks. */
+async function runPipelineWithCostTracking(
+  pipeline: Pipeline,
+  variables?: Record<string, string>,
+  triggeredBy: 'manual' | 'schedule' = 'manual'
+) {
+  if (!pipelineEngine) throw new Error('No project open');
+
+  const runId = randomUUID();
+  costTracker.startRun(runId, pipeline.id);
+
+  // Wire step:output to cost tracker for this run
+  const outputHandler = (_stepId: string, chunk: string) => {
+    costTracker.parseOutput(runId, _stepId, chunk);
+
+    if (costTracker.getCurrentSnapshot()?.budgetExceeded) {
+      if (costTracker.shouldAutoCancel()) {
+        pipelineEngine?.cancel();
+      }
+      // approve-to-continue mode: the renderer shows the approval dialog
+      // via the cost:budget-exceeded event already wired in costTracker.on()
+    }
+  };
+
+  pipelineEngine.on('step:output', outputHandler);
+
+  try {
+    const result = await pipelineEngine.run(pipeline, variables, triggeredBy);
+    costTracker.completeRun(pipeline.name);
+    return result;
+  } catch (err) {
+    costTracker.completeRun(pipeline.name);
+    throw err;
+  } finally {
+    pipelineEngine.removeListener('step:output', outputHandler);
+  }
+}
+
 // ─── IPC Handlers: Quick Run ─────────────────────────────────────────────────
 
 ipcMain.handle(IPC.QUICK_RUN_EXECUTE, async (_event, agent: string, prompt: string) => {
@@ -199,29 +246,46 @@ ipcMain.handle(IPC.QUICK_RUN_EXECUTE, async (_event, agent: string, prompt: stri
 
   const runId = randomUUID();
 
+  // Start cost tracking for this run
+  costTracker.startRun(runId, `quickrun-${agent}`);
+
   // Build context file
   const contextPath = await contextBuilder.build({ agent, prompt });
 
   // Spawn runner
   const runProcess = runnerRegistry.spawn(runId, agent, contextPath, undefined, squadBridge.squadDir.replace(/[/\\]\.squad$/, ''));
 
-  // Stream stdout to renderer
+  // Stream stdout to renderer + cost tracker
   runProcess.process.stdout?.on('data', (data: Buffer) => {
+    const chunk = data.toString();
+    costTracker.parseOutput(runId, agent, chunk);
+
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC.RUN_OUTPUT, {
         runId,
-        chunk: data.toString(),
+        chunk,
         timestamp: new Date().toISOString(),
       });
+    }
+
+    // Check if budget exceeded and should auto-cancel
+    if (costTracker.getCurrentSnapshot()?.budgetExceeded) {
+      if (costTracker.shouldAutoCancel()) {
+        runnerRegistry.cancel(runId);
+      }
+      // shouldPause() mode is handled by the renderer showing the approval dialog
     }
   });
 
   // Stream stderr to renderer
   runProcess.process.stderr?.on('data', (data: Buffer) => {
+    const chunk = data.toString();
+    costTracker.parseOutput(runId, agent, chunk);
+
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC.RUN_OUTPUT, {
         runId,
-        chunk: data.toString(),
+        chunk,
         timestamp: new Date().toISOString(),
       });
     }
@@ -230,6 +294,8 @@ ipcMain.handle(IPC.QUICK_RUN_EXECUTE, async (_event, agent: string, prompt: stri
   // Handle completion
   runProcess.process.on('exit', (code) => {
     const success = code === 0;
+    costTracker.completeRun(`Quick Run: ${agent}`);
+
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC.RUN_COMPLETE, {
         runId,
@@ -289,8 +355,8 @@ ipcMain.handle('pipelines:run', async (_event, id: string, variables?: Record<st
   if (!pipelinePersistence || !pipelineEngine) throw new Error('No project open');
   const pipeline = await pipelinePersistence.get(id);
   if (!pipeline) throw new Error(`Pipeline "${id}" not found`);
-  // Run async — don't await (engine emits events)
-  pipelineEngine.run(pipeline, variables);
+  // Run with cost tracking — don't await (engine emits events)
+  runPipelineWithCostTracking(pipeline, variables, 'manual');
   return { status: 'started', pipelineId: id };
 });
 
@@ -403,14 +469,14 @@ ipcMain.handle('webhooks:listEndpoints', async () => {
   return webhookServer.listEndpoints();
 });
 
-// Wire webhook triggers to pipeline execution
+// Wire webhook triggers to pipeline execution (with cost tracking)
 webhookServer.on('webhook:triggered', async (endpoint: { pipelineId: string; variables?: Record<string, string> }, body: Record<string, unknown>) => {
   if (!pipelineEngine || !pipelinePersistence) return;
   try {
     const pipeline = await pipelinePersistence.get(endpoint.pipelineId);
     if (pipeline) {
       const vars = { ...endpoint.variables, ...body } as Record<string, string>;
-      pipelineEngine.run(pipeline, vars, 'schedule');
+      await runPipelineWithCostTracking(pipeline, vars, 'schedule');
     }
   } catch (err) {
     console.error('Webhook pipeline trigger failed:', err);
@@ -474,6 +540,38 @@ ipcMain.handle('costs:setBudget', async (_event, tokens: number) => {
 
 ipcMain.handle('costs:getDailyUsage', async () => {
   return costTracker.getDailyUsage();
+});
+
+ipcMain.handle('costs:estimateRun', async (_event, pipelineId: string) => {
+  // Estimate cost based on step count × baseline overhead
+  if (!pipelinePersistence) return null;
+  const pipeline = await pipelinePersistence.get(pipelineId);
+  if (!pipeline) return null;
+
+  const taskSteps = pipeline.steps.filter((s) => s.type === 'task').length;
+  const parallelSteps = pipeline.steps.filter((s) => s.type === 'parallel').length;
+  const loopSteps = pipeline.steps.filter((s) => s.type === 'loop').length;
+
+  // Each agent call costs ~350k tokens baseline (Copilot CLI overhead)
+  const BASELINE_TOKENS_PER_CALL = 350000;
+  const estimatedCalls = taskSteps + (parallelSteps * 2) + (loopSteps * 3);
+  const estimatedTokens = estimatedCalls * BASELINE_TOKENS_PER_CALL;
+  const estimatedRequests = estimatedCalls * 6; // ~6 premium requests per call
+  const pricing = costTracker.getConfig().modelPricing.find((p) => p.name === 'default');
+  const estimatedCost = pricing
+    ? (estimatedTokens / 1000) * ((pricing.inputPer1k + pricing.outputPer1k) / 2)
+    : 0;
+
+  return {
+    taskSteps,
+    parallelSteps,
+    loopSteps,
+    estimatedCalls,
+    estimatedTokens,
+    estimatedRequests,
+    estimatedCost,
+    warning: estimatedCalls > 5 ? 'This pipeline may use significant tokens. Consider setting a budget.' : null,
+  };
 });
 
 // Wire cost tracker events to renderer
