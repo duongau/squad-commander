@@ -1,0 +1,39 @@
+{
+  "name": "squad-commander",
+  "version": "0.1.0",
+  "description": "Visual orchestration for Squad-powered AI agent teams on GitHub Copilot CLI.",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "start": "electron .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": ["squad", "copilot", "orchestration", "electron", "ai-agents"],
+  "author": "duongau",
+  "license": "MIT",
+  "dependencies": {
+    "@xyflow/react": "^12.10.2",
+    "chokidar": "^5.0.0",
+    "gray-matter": "^4.0.3",
+    "node-cron": "^4.2.1",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "zustand": "^5.0.12"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^25.6.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "electron": "^41.2.0",
+    "electron-builder": "^26.8.1",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.8",
+    "vite-plugin-electron": "^0.29.1",
+    "vitest": "^4.1.4"
+  }
+}
