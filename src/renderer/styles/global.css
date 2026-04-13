@@ -1,16 +1,32 @@
 :root {
-  --bg-primary: #1a1a2e;
-  --bg-secondary: #16213e;
-  --bg-sidebar: #0f3460;
-  --text-primary: #e6e6e6;
-  --text-secondary: #a0a0b0;
-  --accent: #e94560;
-  --accent-hover: #ff6b81;
-  --border: #2a2a4a;
-  --success: #2ed573;
-  --warning: #ffa502;
-  --error: #ff4757;
-  --sidebar-width: 200px;
+  --bg-primary: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-sidebar: #010409;
+  --bg-card: #1c2128;
+  --bg-hover: #1f2937;
+  --text-primary: #f0f6fc;
+  --text-secondary: #8b949e;
+  --text-muted: #6e7681;
+  --accent: #58a6ff;
+  --accent-hover: #79c0ff;
+  --accent-glow: rgba(88, 166, 255, 0.15);
+  --border: #30363d;
+  --border-light: #21262d;
+  --success: #3fb950;
+  --success-bg: rgba(63, 185, 80, 0.1);
+  --warning: #d29922;
+  --warning-bg: rgba(210, 153, 34, 0.1);
+  --error: #f85149;
+  --error-bg: rgba(248, 81, 73, 0.1);
+  --gold: #e3b341;
+  --purple: #bc8cff;
+  --sidebar-width: 220px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --transition: 0.2s ease;
 }
 
 * {
@@ -26,6 +42,9 @@ body {
   color: var(--text-primary);
   overflow: hidden;
   height: 100vh;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
 #root {
@@ -46,18 +65,21 @@ body {
   border-right: 1px solid var(--border);
   user-select: none;
   -webkit-app-region: drag;
+  box-shadow: var(--shadow-md);
+  z-index: 10;
 }
 
 .sidebar-header {
-  padding: 16px;
+  padding: 20px 16px;
   border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-sidebar) 100%);
 }
 
 .sidebar-title {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--text-primary);
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
 }
 
 .sidebar-nav {
@@ -78,19 +100,22 @@ body {
   color: var(--text-secondary);
   font-size: 13px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--transition);
   text-align: left;
+  border-left: 3px solid transparent;
+  border-radius: 0;
 }
 
 .nav-item:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-hover);
   color: var(--text-primary);
 }
 
 .nav-item.active {
-  background: rgba(233, 69, 96, 0.15);
+  background: var(--accent-glow);
   color: var(--accent);
-  border-left: 3px solid var(--accent);
+  border-left-color: var(--accent);
+  font-weight: 600;
 }
 
 .nav-icon {
