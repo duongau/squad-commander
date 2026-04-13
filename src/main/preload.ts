@@ -40,6 +40,25 @@ contextBridge.exposeInMainWorld('commander', {
     openProject: () => ipcRenderer.invoke('dialog:openProject'),
   },
 
+  // Pipelines
+  pipelines: {
+    list: () => ipcRenderer.invoke('pipelines:list'),
+    get: (id: string) => ipcRenderer.invoke('pipelines:get', id),
+    save: (pipeline: unknown) => ipcRenderer.invoke('pipelines:save', pipeline),
+    delete: (id: string) => ipcRenderer.invoke('pipelines:delete', id),
+    validate: (pipeline: unknown) => ipcRenderer.invoke('pipelines:validate', pipeline),
+    run: (id: string, variables?: Record<string, string>) =>
+      ipcRenderer.invoke('pipelines:run', id, variables),
+    pause: () => ipcRenderer.invoke('pipelines:pause'),
+    resume: () => ipcRenderer.invoke('pipelines:resume'),
+    cancel: () => ipcRenderer.invoke('pipelines:cancel'),
+    approveGate: (stepId: string) => ipcRenderer.invoke('pipelines:approveGate', stepId),
+    rejectGate: (stepId: string) => ipcRenderer.invoke('pipelines:rejectGate', stepId),
+    getRunHistory: (pipelineId: string) =>
+      ipcRenderer.invoke('pipelines:getRunHistory', pipelineId),
+    getTemplates: () => ipcRenderer.invoke('pipelines:getTemplates'),
+  },
+
   // Events — renderer subscribes to main process events
   on: (channel: string, callback: (...args: unknown[]) => void) => {
     const validChannels = [

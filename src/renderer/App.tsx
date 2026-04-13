@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { CanvasView } from './views/CanvasView';
+import { PipelineView } from './views/PipelineView';
 import { useSquadStore } from './stores/squad-store';
 
 type View = 'canvas' | 'pipelines' | 'schedules' | 'dashboard' | 'decisions' | 'settings';
@@ -53,7 +54,7 @@ export function App() {
       </nav>
       <main className="content">
         {activeView === 'canvas' && <CanvasView />}
-        {activeView === 'pipelines' && <Placeholder title="Pipelines" phase={2} />}
+        {activeView === 'pipelines' && <PipelineView />}
         {activeView === 'schedules' && <Placeholder title="Schedules" phase={3} />}
         {activeView === 'dashboard' && <Placeholder title="Dashboard" phase={4} />}
         {activeView === 'decisions' && <Placeholder title="Decisions" phase={4} />}

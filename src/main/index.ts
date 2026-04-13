@@ -4,6 +4,8 @@ import { SquadBridge } from './squad-bridge';
 import { FileWatcher } from './file-watcher';
 import { RunnerRegistry } from './runner-registry';
 import { ContextBuilder } from './context-builder';
+import { PipelinePersistence } from './pipeline-persistence';
+import { PipelineEngine } from './pipeline-engine';
 import { NotificationService } from './notification';
 import { IPC } from '../shared/ipc-channels';
 import { randomUUID } from 'crypto';
@@ -13,6 +15,8 @@ let squadBridge: SquadBridge | null = null;
 let fileWatcher: FileWatcher | null = null;
 const runnerRegistry = new RunnerRegistry();
 let contextBuilder: ContextBuilder | null = null;
+let pipelinePersistence: PipelinePersistence | null = null;
+let pipelineEngine: PipelineEngine | null = null;
 const notifications = new NotificationService();
 
 function createWindow() {
@@ -46,6 +50,41 @@ function createWindow() {
 function initProject(projectPath: string): void {
   squadBridge = new SquadBridge(projectPath);
   contextBuilder = new ContextBuilder(squadBridge);
+  pipelinePersistence = new PipelinePersistence(squadBridge.squadDir);
+  pipelineEngine = new PipelineEngine(
+    contextBuilder,
+    runnerRegistry,
+    pipelinePersistence,
+    projectPath
+  );
+
+  // Wire pipeline engine events to renderer
+  pipelineEngine.on('step:start', (stepId: string) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC.RUN_STATUS, { type: 'step:start', stepId });
+    }
+  });
+  pipelineEngine.on('step:output', (stepId: string, chunk: string) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC.RUN_OUTPUT, { stepId, chunk, timestamp: new Date().toISOString() });
+    }
+  });
+  pipelineEngine.on('step:complete', (stepId: string, result: unknown) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC.RUN_STATUS, { type: 'step:complete', stepId, result });
+    }
+  });
+  pipelineEngine.on('run:complete', (run: unknown) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC.RUN_COMPLETE, run);
+    }
+  });
+  pipelineEngine.on('gate:waiting', (stepId: string, message: string) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC.RUN_STATUS, { type: 'gate:waiting', stepId, message });
+    }
+    notifications.approvalRequired('Pipeline', stepId);
+  });
 
   // Stop existing file watcher
   if (fileWatcher) {
@@ -160,6 +199,73 @@ ipcMain.handle(IPC.RUNNERS_LIST, async () => {
 
 ipcMain.handle(IPC.RUNNERS_DETECT, async () => {
   return runnerRegistry.detect();
+});
+
+// ─── IPC Handlers: Pipelines ─────────────────────────────────────────────────
+
+ipcMain.handle('pipelines:list', async () => {
+  if (!pipelinePersistence) return [];
+  return pipelinePersistence.list();
+});
+
+ipcMain.handle('pipelines:get', async (_event, id: string) => {
+  if (!pipelinePersistence) return null;
+  return pipelinePersistence.get(id);
+});
+
+ipcMain.handle('pipelines:save', async (_event, pipeline: unknown) => {
+  if (!pipelinePersistence) throw new Error('No project open');
+  return pipelinePersistence.save(pipeline as import('../shared/types').Pipeline);
+});
+
+ipcMain.handle('pipelines:delete', async (_event, id: string) => {
+  if (!pipelinePersistence) return false;
+  return pipelinePersistence.delete(id);
+});
+
+ipcMain.handle('pipelines:validate', async (_event, pipeline: unknown) => {
+  const { validatePipeline } = await import('../shared/pipeline-schema');
+  return validatePipeline(pipeline);
+});
+
+ipcMain.handle('pipelines:run', async (_event, id: string, variables?: Record<string, string>) => {
+  if (!pipelinePersistence || !pipelineEngine) throw new Error('No project open');
+  const pipeline = await pipelinePersistence.get(id);
+  if (!pipeline) throw new Error(`Pipeline "${id}" not found`);
+  // Run async — don't await (engine emits events)
+  pipelineEngine.run(pipeline, variables);
+  return { status: 'started', pipelineId: id };
+});
+
+ipcMain.handle('pipelines:pause', async () => {
+  pipelineEngine?.pause();
+});
+
+ipcMain.handle('pipelines:resume', async () => {
+  pipelineEngine?.resume();
+});
+
+ipcMain.handle('pipelines:cancel', async () => {
+  pipelineEngine?.cancel();
+});
+
+ipcMain.handle('pipelines:approveGate', async (_event, stepId: string) => {
+  pipelineEngine?.approveGate(stepId);
+});
+
+ipcMain.handle('pipelines:rejectGate', async (_event, stepId: string) => {
+  pipelineEngine?.rejectGate(stepId);
+});
+
+ipcMain.handle('pipelines:getRunHistory', async (_event, pipelineId: string) => {
+  if (!pipelinePersistence) return [];
+  return pipelinePersistence.listRuns(pipelineId);
+});
+
+ipcMain.handle('pipelines:getTemplates', async () => {
+  if (!pipelinePersistence) return [];
+  const templatesDir = path.join(__dirname, '../../templates');
+  return pipelinePersistence.getTemplates(templatesDir);
 });
 
 // ─── IPC Handlers: Settings ──────────────────────────────────────────────────
