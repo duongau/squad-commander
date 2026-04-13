@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('commander', {
     get: () => ipcRenderer.invoke('settings:get'),
     update: (settings: unknown) =>
       ipcRenderer.invoke('settings:update', settings),
+    openProject: () => ipcRenderer.invoke('dialog:openProject'),
   },
 
   // Events — renderer subscribes to main process events
