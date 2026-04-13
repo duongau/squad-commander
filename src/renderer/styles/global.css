@@ -437,3 +437,82 @@ body {
   font-size: 11px; white-space: pre-wrap; word-break: break-all;
   background: var(--bg-primary); padding: 8px; border-radius: 4px; max-height: 100%;
 }
+
+/* Schedule View */
+.schedule-view { padding: 24px; }
+.schedule-header {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;
+}
+.schedule-create-form {
+  background: var(--bg-secondary); padding: 16px; border-radius: 8px; margin-bottom: 24px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.form-field { display: flex; flex-direction: column; gap: 4px; }
+.form-field label { font-size: 12px; color: var(--text-secondary); text-transform: uppercase; }
+.form-field select, .form-field input[type="text"], .cron-input {
+  background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border);
+  border-radius: 4px; padding: 8px; font-size: 13px;
+}
+.cron-presets { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 4px; }
+.cron-input { margin-top: 4px; width: 100%; }
+
+.schedule-list { display: flex; flex-direction: column; gap: 8px; }
+.schedule-card {
+  background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px;
+}
+.schedule-card.disabled { opacity: 0.5; }
+.schedule-card-header {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+}
+.schedule-card-body {
+  display: flex; justify-content: space-between; align-items: center;
+}
+.schedule-info { display: flex; flex-direction: column; gap: 4px; }
+.schedule-cron { font-size: 13px; font-family: monospace; }
+.schedule-last-run { font-size: 11px; color: var(--text-secondary); }
+.status-dot { margin-left: 4px; }
+.btn-delete { color: var(--error); border-color: var(--error); }
+.btn-delete:hover { background: rgba(255, 71, 87, 0.1); }
+
+/* Toggle switch */
+.toggle-switch { position: relative; display: inline-block; width: 36px; height: 20px; }
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute; cursor: pointer; inset: 0; background: var(--border);
+  border-radius: 20px; transition: 0.2s;
+}
+.toggle-slider::before {
+  content: ''; position: absolute; height: 14px; width: 14px; left: 3px; bottom: 3px;
+  background: white; border-radius: 50%; transition: 0.2s;
+}
+.toggle-switch input:checked + .toggle-slider { background: var(--success); }
+.toggle-switch input:checked + .toggle-slider::before { transform: translateX(16px); }
+
+/* Approval Gate Dialog */
+.gate-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+}
+.gate-dialog {
+  background: var(--bg-secondary); border: 1px solid var(--accent); border-radius: 12px;
+  width: 500px; max-height: 80vh; overflow-y: auto;
+}
+.gate-header {
+  display: flex; align-items: center; gap: 8px; padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.gate-icon { font-size: 24px; }
+.gate-body { padding: 16px; }
+.gate-message { margin-bottom: 16px; }
+.gate-message label, .gate-output label {
+  display: block; font-size: 11px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 4px;
+}
+.gate-output pre {
+  background: var(--bg-primary); padding: 8px; border-radius: 4px;
+  font-size: 11px; max-height: 200px; overflow-y: auto; white-space: pre-wrap;
+}
+.gate-actions {
+  display: flex; gap: 12px; padding: 16px; border-top: 1px solid var(--border);
+}
+.gate-approve { flex: 1; }
+.gate-reject { flex: 1; }

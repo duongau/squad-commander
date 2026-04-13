@@ -59,6 +59,15 @@ contextBridge.exposeInMainWorld('commander', {
     getTemplates: () => ipcRenderer.invoke('pipelines:getTemplates'),
   },
 
+  // Schedules
+  schedules: {
+    list: () => ipcRenderer.invoke('schedules:list'),
+    create: (config: unknown) => ipcRenderer.invoke('schedules:create', config),
+    update: (id: string, updates: unknown) => ipcRenderer.invoke('schedules:update', id, updates),
+    delete: (id: string) => ipcRenderer.invoke('schedules:delete', id),
+    toggle: (id: string, enabled: boolean) => ipcRenderer.invoke('schedules:toggle', id, enabled),
+  },
+
   // Events — renderer subscribes to main process events
   on: (channel: string, callback: (...args: unknown[]) => void) => {
     const validChannels = [
@@ -67,6 +76,7 @@ contextBridge.exposeInMainWorld('commander', {
       'run:output',
       'run:complete',
       'run:error',
+      'schedule:event',
     ];
     if (validChannels.includes(channel)) {
       const listener = (_event: unknown, ...args: unknown[]) =>

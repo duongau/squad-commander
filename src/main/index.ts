@@ -6,6 +6,8 @@ import { RunnerRegistry } from './runner-registry';
 import { ContextBuilder } from './context-builder';
 import { PipelinePersistence } from './pipeline-persistence';
 import { PipelineEngine } from './pipeline-engine';
+import { Scheduler } from './scheduler';
+import { SystemTray } from './system-tray';
 import { NotificationService } from './notification';
 import { IPC } from '../shared/ipc-channels';
 import { randomUUID } from 'crypto';
@@ -17,6 +19,8 @@ const runnerRegistry = new RunnerRegistry();
 let contextBuilder: ContextBuilder | null = null;
 let pipelinePersistence: PipelinePersistence | null = null;
 let pipelineEngine: PipelineEngine | null = null;
+let scheduler: Scheduler | null = null;
+const systemTray = new SystemTray();
 const notifications = new NotificationService();
 
 function createWindow() {
@@ -95,6 +99,30 @@ function initProject(projectPath: string): void {
   if (squadBridge.isSquadProject()) {
     fileWatcher = new FileWatcher(squadBridge.squadDir);
     fileWatcher.start();
+  }
+
+  // Initialize scheduler
+  if (pipelineEngine && pipelinePersistence) {
+    if (scheduler) scheduler.stopAll();
+    scheduler = new Scheduler(squadBridge.squadDir, pipelineEngine, pipelinePersistence);
+
+    scheduler.on('schedule:started', (scheduleId: string) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('schedule:event', { type: 'started', scheduleId });
+      }
+    });
+    scheduler.on('schedule:completed', (scheduleId: string) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('schedule:event', { type: 'completed', scheduleId });
+      }
+      notifications.scheduleCompleted(scheduleId, true);
+    });
+    scheduler.on('schedule:failed', (scheduleId: string) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('schedule:event', { type: 'failed', scheduleId });
+      }
+      notifications.scheduleCompleted(scheduleId, false);
+    });
   }
 }
 
@@ -268,6 +296,34 @@ ipcMain.handle('pipelines:getTemplates', async () => {
   return pipelinePersistence.getTemplates(templatesDir);
 });
 
+// ─── IPC Handlers: Schedules ─────────────────────────────────────────────────
+
+ipcMain.handle('schedules:list', async () => {
+  return scheduler?.list() || [];
+});
+
+ipcMain.handle('schedules:create', async (_event, config: {
+  id: string; pipelineId: string; cron: string; enabled: boolean; variables: Record<string, string>;
+}) => {
+  if (!scheduler) throw new Error('No project open');
+  return scheduler.create(config);
+});
+
+ipcMain.handle('schedules:update', async (_event, id: string, updates: Record<string, unknown>) => {
+  if (!scheduler) throw new Error('No project open');
+  return scheduler.update(id, updates);
+});
+
+ipcMain.handle('schedules:delete', async (_event, id: string) => {
+  if (!scheduler) return false;
+  return scheduler.delete(id);
+});
+
+ipcMain.handle('schedules:toggle', async (_event, id: string, enabled: boolean) => {
+  if (!scheduler) return null;
+  return scheduler.toggle(id, enabled);
+});
+
 // ─── IPC Handlers: Settings ──────────────────────────────────────────────────
 
 ipcMain.handle(IPC.SETTINGS_GET, async () => {
@@ -302,10 +358,14 @@ ipcMain.handle('dialog:openProject', async () => {
 
 // ─── App Lifecycle ───────────────────────────────────────────────────────────
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+  systemTray.create();
+});
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  // Don't quit on macOS or if schedules are active — minimize to tray
+  if (process.platform !== 'darwin' && (!scheduler || scheduler.activeCount === 0)) {
     app.quit();
   }
 });
@@ -318,5 +378,7 @@ app.on('activate', () => {
 
 app.on('before-quit', () => {
   runnerRegistry.killAll();
+  scheduler?.stopAll();
   fileWatcher?.stop();
+  systemTray.destroy();
 });
