@@ -12,6 +12,9 @@ import { TelemetryAggregator } from './telemetry-aggregator';
 import { RalphMonitor } from './ralph-monitor';
 import { ExportImport } from './export-import';
 import { CostTracker } from './cost-tracker';
+import { McpConnector } from './mcp-connector';
+import { WebhookServer } from './webhook-server';
+import { NotificationChannels } from './notification-channels';
 import { NotificationService } from './notification';
 import { IPC } from '../shared/ipc-channels';
 import { randomUUID } from 'crypto';
@@ -28,6 +31,9 @@ let telemetry: TelemetryAggregator | null = null;
 let ralphMonitor: RalphMonitor | null = null;
 let exportImport: ExportImport | null = null;
 const costTracker = new CostTracker();
+let mcpConnector: McpConnector | null = null;
+const webhookServer = new WebhookServer();
+const notificationChannels = new NotificationChannels();
 const systemTray = new SystemTray();
 const notifications = new NotificationService();
 
@@ -144,6 +150,9 @@ function initProject(projectPath: string): void {
 
   // Initialize export/import
   exportImport = new ExportImport(squadBridge.squadDir);
+
+  // Initialize MCP connector
+  mcpConnector = new McpConnector(squadBridge.squadDir);
 }
 
 // ─── IPC Handlers: Squad State ───────────────────────────────────────────────
@@ -344,6 +353,103 @@ ipcMain.handle('schedules:toggle', async (_event, id: string, enabled: boolean) 
   return scheduler.toggle(id, enabled);
 });
 
+// ─── IPC Handlers: MCP Connector ─────────────────────────────────────────────
+
+ipcMain.handle('mcp:list', async () => {
+  return mcpConnector?.list() || [];
+});
+
+ipcMain.handle('mcp:add', async (_event, config: unknown) => {
+  if (!mcpConnector) throw new Error('No project open');
+  mcpConnector.add(config as import('./mcp-connector').McpServerConfig);
+});
+
+ipcMain.handle('mcp:remove', async (_event, name: string) => {
+  return mcpConnector?.remove(name) || false;
+});
+
+ipcMain.handle('mcp:toggle', async (_event, name: string, enabled: boolean) => {
+  mcpConnector?.toggle(name, enabled);
+});
+
+ipcMain.handle('mcp:discover', async () => {
+  return mcpConnector?.discover() || [];
+});
+
+// ─── IPC Handlers: Webhook Server ────────────────────────────────────────────
+
+ipcMain.handle('webhooks:start', async () => {
+  await webhookServer.start();
+  return { url: webhookServer.getUrl(), port: webhookServer.getPort() };
+});
+
+ipcMain.handle('webhooks:stop', async () => {
+  webhookServer.stop();
+});
+
+ipcMain.handle('webhooks:isRunning', async () => {
+  return webhookServer.isRunning();
+});
+
+ipcMain.handle('webhooks:createEndpoint', async (_event, pipelineId: string, variables?: Record<string, string>) => {
+  return webhookServer.createEndpoint(pipelineId, variables);
+});
+
+ipcMain.handle('webhooks:deleteEndpoint', async (_event, id: string) => {
+  return webhookServer.deleteEndpoint(id);
+});
+
+ipcMain.handle('webhooks:listEndpoints', async () => {
+  return webhookServer.listEndpoints();
+});
+
+// Wire webhook triggers to pipeline execution
+webhookServer.on('webhook:triggered', async (endpoint: { pipelineId: string; variables?: Record<string, string> }, body: Record<string, unknown>) => {
+  if (!pipelineEngine || !pipelinePersistence) return;
+  try {
+    const pipeline = await pipelinePersistence.get(endpoint.pipelineId);
+    if (pipeline) {
+      const vars = { ...endpoint.variables, ...body } as Record<string, string>;
+      pipelineEngine.run(pipeline, vars, 'schedule');
+    }
+  } catch (err) {
+    console.error('Webhook pipeline trigger failed:', err);
+  }
+});
+
+// ─── IPC Handlers: Notification Channels ─────────────────────────────────────
+
+ipcMain.handle('channels:list', async () => {
+  return notificationChannels.listChannels();
+});
+
+ipcMain.handle('channels:add', async (_event, config: unknown) => {
+  notificationChannels.addChannel(config as import('./notification-channels').NotificationChannelConfig);
+});
+
+ipcMain.handle('channels:remove', async (_event, id: string) => {
+  return notificationChannels.removeChannel(id);
+});
+
+ipcMain.handle('channels:toggle', async (_event, id: string, enabled: boolean) => {
+  notificationChannels.toggleChannel(id, enabled);
+});
+
+ipcMain.handle('channels:getRouting', async () => {
+  return notificationChannels.getRouting();
+});
+
+ipcMain.handle('channels:setRouting', async (_event, routing: unknown) => {
+  notificationChannels.setRouting(routing as import('./notification-channels').ChannelEventRouting[]);
+});
+
+ipcMain.handle('channels:test', async (_event, channelId: string) => {
+  const channel = notificationChannels.listChannels().find((c) => c.id === channelId);
+  if (channel) {
+    await notificationChannels.notify('test', 'Test Notification', 'Squad Commander is connected!');
+  }
+});
+
 // ─── IPC Handlers: Cost Tracking ─────────────────────────────────────────────
 
 ipcMain.handle('costs:getCurrentRun', async () => {
@@ -487,6 +593,7 @@ app.on('before-quit', () => {
   scheduler?.stopAll();
   telemetry?.stop();
   ralphMonitor?.destroy();
+  webhookServer.stop();
   fileWatcher?.stop();
   systemTray.destroy();
 });

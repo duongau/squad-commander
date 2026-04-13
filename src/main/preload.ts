@@ -98,6 +98,37 @@ contextBridge.exposeInMainWorld('commander', {
     getDailyUsage: () => ipcRenderer.invoke('costs:getDailyUsage'),
   },
 
+  // MCP Connector
+  mcp: {
+    list: () => ipcRenderer.invoke('mcp:list'),
+    add: (config: unknown) => ipcRenderer.invoke('mcp:add', config),
+    remove: (name: string) => ipcRenderer.invoke('mcp:remove', name),
+    toggle: (name: string, enabled: boolean) => ipcRenderer.invoke('mcp:toggle', name, enabled),
+    discover: () => ipcRenderer.invoke('mcp:discover'),
+  },
+
+  // Webhooks
+  webhooks: {
+    start: () => ipcRenderer.invoke('webhooks:start'),
+    stop: () => ipcRenderer.invoke('webhooks:stop'),
+    isRunning: () => ipcRenderer.invoke('webhooks:isRunning'),
+    createEndpoint: (pipelineId: string, variables?: Record<string, string>) =>
+      ipcRenderer.invoke('webhooks:createEndpoint', pipelineId, variables),
+    deleteEndpoint: (id: string) => ipcRenderer.invoke('webhooks:deleteEndpoint', id),
+    listEndpoints: () => ipcRenderer.invoke('webhooks:listEndpoints'),
+  },
+
+  // Notification Channels
+  channels: {
+    list: () => ipcRenderer.invoke('channels:list'),
+    add: (config: unknown) => ipcRenderer.invoke('channels:add', config),
+    remove: (id: string) => ipcRenderer.invoke('channels:remove', id),
+    toggle: (id: string, enabled: boolean) => ipcRenderer.invoke('channels:toggle', id, enabled),
+    getRouting: () => ipcRenderer.invoke('channels:getRouting'),
+    setRouting: (routing: unknown) => ipcRenderer.invoke('channels:setRouting', routing),
+    test: (channelId: string) => ipcRenderer.invoke('channels:test', channelId),
+  },
+
   // Events — renderer subscribes to main process events
   on: (channel: string, callback: (...args: unknown[]) => void) => {
     const validChannels = [

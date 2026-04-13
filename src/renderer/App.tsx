@@ -129,6 +129,53 @@ function SettingsView() {
       </div>
 
       <div className="settings-section">
+        <h3>🔌 MCP Servers</h3>
+        <p>Connect to MCP servers for external data access in pipeline steps.</p>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button className="btn-small" onClick={async () => {
+            const servers = await (window as any).commander.mcp.list();
+            alert(`MCP Servers: ${servers.map((s: any) => `${s.name} (${s.enabled ? 'on' : 'off'})`).join(', ') || 'None configured'}`);
+          }}>List Servers</button>
+          <button className="btn-small" onClick={async () => {
+            const discovered = await (window as any).commander.mcp.discover();
+            alert(`Discovered: ${discovered.map((s: any) => s.name).join(', ') || 'None found'}`);
+          }}>Auto-Discover</button>
+        </div>
+      </div>
+
+      <div className="settings-section">
+        <h3>🔗 Webhooks</h3>
+        <p>External HTTP triggers for pipeline execution.</p>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button className="btn-primary" onClick={async () => {
+            try {
+              const result = await (window as any).commander.webhooks.start();
+              alert(`Webhook server started at ${result.url}`);
+            } catch (e: any) { alert(e.message); }
+          }}>▶ Start Server</button>
+          <button className="btn-small" onClick={async () => {
+            await (window as any).commander.webhooks.stop();
+            alert('Webhook server stopped');
+          }}>⏹ Stop</button>
+          <button className="btn-small" onClick={async () => {
+            const endpoints = await (window as any).commander.webhooks.listEndpoints();
+            alert(`Endpoints: ${endpoints.map((e: any) => `${e.path} → ${e.pipelineId}`).join('\n') || 'None'}`);
+          }}>List Endpoints</button>
+        </div>
+      </div>
+
+      <div className="settings-section">
+        <h3>📢 Notification Channels</h3>
+        <p>Send pipeline notifications to Teams, Slack, or email.</p>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button className="btn-small" onClick={async () => {
+            const channels = await (window as any).commander.channels.list();
+            alert(`Channels: ${channels.map((c: any) => `${c.name} (${c.type})`).join(', ') || 'None configured'}`);
+          }}>List Channels</button>
+        </div>
+      </div>
+
+      <div className="settings-section">
         <h3>About</h3>
         <p>Squad Commander v0.1.0</p>
         <p>Copilot CLI + Squad native. No ATM dependency.</p>
