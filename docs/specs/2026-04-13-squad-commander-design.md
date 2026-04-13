@@ -1,7 +1,7 @@
-# Squad Commander — Design Specification v2
+# Squad Commander — Design Specification v3
 
 **Date:** 2026-04-13
-**Status:** Approved (v2 — revised after deep design review)
+**Status:** Approved (v3 — integrated ATM + Squad research findings)
 **Author:** duongau + Copilot
 
 ---
@@ -12,9 +12,21 @@ Managing Squad agent teams through CLI commands and markdown files works, but la
 
 ## Proposed Solution
 
-**Squad Commander** — an Electron desktop app that provides visual orchestration for any Squad-powered project. It reads and writes standard `.squad/` files (no proprietary formats), giving users a drag-and-drop org chart, visual pipeline builder with conditional branching, scheduling, and real-time execution monitoring.
+**Squad Commander** — an Electron desktop app that provides visual orchestration for any Squad-powered project. It bridges the visual org-chart management of Claude Agent Team Manager (ATM) with the repo-native execution of Squad CLI/SDK. It reads and writes standard `.squad/` files (no proprietary formats), giving users a drag-and-drop org chart, visual pipeline builder with conditional branching, scheduling, real-time execution monitoring, and multi-engine dispatch.
 
 The app is **general-purpose** — it works with any Squad setup regardless of domain. Users can later extend it for specific workflows (e.g., content development, DevOps) as needed.
+
+## Vision: The 5-Layer Stack
+
+| Layer | Tool | Purpose |
+|-------|------|---------|
+| **Strategy** | Commander UI (org chart + pipeline builder) | Visual goal setting, team design, workflow orchestration |
+| **Orchestration** | Squad CLI / SDK + extensible runner registry | Repo-native task delegation and parallel execution |
+| **Automation** | Ralph-Watch + Scheduler | Background monitoring of issues + scheduled pipeline runs |
+| **Memory** | decisions.md + MCP connectors (future) | Persistent repo-native "brain" and external data access |
+| **Guardrails** | CostTracker + HookPipeline | Token budgets, PII scrubbing, reviewer lockout, governance |
+
+> **Relationship to ATM (Claude-Agent-Team-Manager):** Squad Commander is fully standalone — no code dependency on ATM. We draw UX inspiration from ATM's visual patterns but build our own implementation on Copilot CLI + Squad SDK. ATM targets Claude Code; Commander targets GitHub Copilot.
 
 ## Design Principles
 
@@ -23,7 +35,9 @@ The app is **general-purpose** — it works with any Squad setup regardless of d
 3. **Live sync** — File watcher on `.squad/` ensures the UI reflects external changes (CLI, VS Code, other editors).
 4. **Pipeline as data** — Pipelines are JSON files in `.squad/pipelines/`, version-controlled with your project.
 5. **Don't compete with Ralph** — Squad's watch mode (Ralph) handles issue triage. Commander orchestrates workflow pipelines. They complement, not conflict.
-6. **Configurable runner** — Don't hardcode `copilot`. Support any agent runner via settings.
+6. **Multi-engine ready** — Runner registry pattern supports multiple agent engines (Squad CLI, Claude Code, custom) from day one. Only Squad ships in Phase 1.
+7. **Decisions are the source of truth** — The pipeline engine reads `.squad/decisions.md` before delegating work and writes decisions back after completion.
+8. **Cost-aware execution** — Token budgets and cost tracking are first-class concerns, not afterthoughts.
 
 ---
 
@@ -51,54 +65,65 @@ The app is **general-purpose** — it works with any Squad setup regardless of d
 ## Architecture
 
 ```
-┌──────────────────────────────────────────┐
-│              Electron Main               │
-│                                          │
-│  ┌──────────────┐  ┌─────────────────┐   │
-│  │  Squad       │  │  File Watcher   │   │
-│  │  Service     │  │  (chokidar on   │   │
-│  │  (SDK +      │  │   .squad/)      │   │
-│  │   fallback)  │  │                 │   │
-│  └──────────────┘  └─────────────────┘   │
-│                                          │
-│  ┌──────────────┐  ┌─────────────────┐   │
-│  │  Pipeline    │  │  Scheduler      │   │
-│  │  Engine      │  │  (node-cron)    │   │
-│  └──────────────┘  └─────────────────┘   │
-│                                          │
-│  ┌──────────────┐  ┌─────────────────┐   │
-│  │  Agent       │  │  Notification   │   │
-│  │  Runner      │  │  Service        │   │
-│  │  (configurable│                   │   │
-│  │   CLI spawn) │  │                 │   │
-│  └──────────────┘  └─────────────────┘   │
-├──────────────────────────────────────────┤
-│     IPC Bridge (preload.ts + types)      │
-├──────────────────────────────────────────┤
-│              React Frontend              │
-│                                          │
-│  ┌────────┐ ┌──────────┐ ┌───────────┐  │
-│  │ Canvas │ │ Pipeline │ │ Schedule  │  │
-│  │ + Quick│ │ Builder  │ │ Manager   │  │
-│  │  Run   │ │          │ │           │  │
-│  └────────┘ └──────────┘ └───────────┘  │
-│                                          │
-│  ┌────────┐ ┌──────────┐ ┌───────────┐  │
-│  │Charter │ │ Decision │ │ Dashboard │  │
-│  │ Editor │ │   Log    │ │ + Ralph   │  │
-│  │(Monaco)│ │          │ │  Monitor  │  │
-│  └────────┘ └──────────┘ └───────────┘  │
-└──────────────────────────────────────────┘
+┌───────────────────────────────────────────────┐
+│                Electron Main                  │
+│                                               │
+│  ┌───────────────┐  ┌──────────────────────┐  │
+│  │  Squad Bridge │  │  File Watcher        │  │
+│  │  (SDK +       │  │  (chokidar on        │  │
+│  │   fallback +  │  │   .squad/ + log/ +   │  │
+│  │   CLI cmds)   │  │   orchestration-log/)│  │
+│  └───────────────┘  └──────────────────────┘  │
+│                                               │
+│  ┌───────────────┐  ┌──────────────────────┐  │
+│  │  Pipeline     │  │  Scheduler           │  │
+│  │  Engine       │  │  (node-cron)         │  │
+│  └───────────────┘  └──────────────────────┘  │
+│                                               │
+│  ┌───────────────┐  ┌──────────────────────┐  │
+│  │  Runner       │  │  Notification        │  │
+│  │  Registry     │  │  Service             │  │
+│  │  (extensible) │  │                      │  │
+│  └───────────────┘  └──────────────────────┘  │
+│                                               │
+│  ┌───────────────┐  ┌──────────────────────┐  │
+│  │  Cost         │  │  Telemetry           │  │
+│  │  Tracker      │  │  Aggregator          │  │
+│  └───────────────┘  └──────────────────────┘  │
+├───────────────────────────────────────────────┤
+│       IPC Bridge (preload.ts + types)         │
+├───────────────────────────────────────────────┤
+│                React Frontend                 │
+│                                               │
+│  ┌─────────┐ ┌───────────┐ ┌──────────────┐  │
+│  │ Canvas  │ │ Pipeline  │ │  Schedule    │  │
+│  │ + Quick │ │ Builder   │ │  Manager     │  │
+│  │  Run    │ │           │ │              │  │
+│  └─────────┘ └───────────┘ └──────────────┘  │
+│                                               │
+│  ┌─────────┐ ┌───────────┐ ┌──────────────┐  │
+│  │ Charter │ │ Decision  │ │  Dashboard   │  │
+│  │ Editor  │ │  Log      │ │  + Ralph     │  │
+│  │ (Monaco)│ │           │ │  + Telemetry │  │
+│  └─────────┘ └───────────┘ └──────────────┘  │
+│                                               │
+│  ┌─────────┐ ┌───────────┐                   │
+│  │ Cost    │ │ Settings  │                   │
+│  │ Monitor │ │ + Hooks   │                   │
+│  └─────────┘ └───────────┘                   │
+└───────────────────────────────────────────────┘
 ```
 
 ### Electron Main Process
 
-- **Squad Service** — Reads `.squad/` files via SDK. Falls back to gray-matter + custom parsers for markdown-first projects that don't use `squad.config.ts`. All writes go through SDK when possible.
-- **File Watcher** — chokidar watches `.squad/` for external changes, pushes updates to renderer via IPC. Debounced (300ms) to handle rapid file saves.
-- **Pipeline Engine** — Executes pipeline steps. Generates context files, spawns agent runner, captures output, evaluates conditions, handles fan-out/fan-in for parallel steps.
-- **Agent Runner** — Configurable CLI spawner. Default: `gh copilot`. Supports custom commands via settings. Handles process lifecycle (spawn, monitor, timeout, kill).
+- **Squad Bridge** — The adapter between Commander and Squad. Reads `.squad/` files via SDK (falls back to gray-matter for markdown-first projects). Translates UI actions into Squad SDK calls or CLI commands (`squad init`, `squad hire`). Handles bidirectional sync with conflict detection.
+- **File Watcher** — chokidar watches `.squad/`, `.squad/log/`, and `.squad/orchestration-log/` for external changes. Pushes updates to renderer via IPC. Debounced (300ms). Powers both the org chart live-sync and the telemetry stream.
+- **Pipeline Engine** — Executes pipeline steps. Reads `decisions.md` before delegating (persistence layer). Generates context files, spawns runner, captures output, evaluates conditions, handles fan-out/fan-in for parallel steps. Writes decisions back after completion.
+- **Runner Registry** — Extensible registry of agent runners. Ships with Copilot CLI runner (`gh copilot`). Each runner defines: command, flags, context format, output capture method, and token parsing patterns. New runners can be added via settings without code changes.
+- **Cost Tracker** — Parses token usage from runner stdout. Accumulates per-step and per-run totals. Estimates cost based on configurable model rates. Emits `budget-exceeded` event when threshold is hit, which the Pipeline Engine treats as an auto-triggered approval gate.
+- **Telemetry Aggregator** — Aggregates real-time activity from `.squad/log/` and `.squad/orchestration-log/`. Pushes live activity stream to the Dashboard via IPC. Tracks per-agent metrics (runs, decisions, success rate).
 - **Scheduler** — `node-cron` managing scheduled pipeline runs. Runs in background even when app is minimized to tray.
-- **Notification Service** — Desktop notifications for pipeline events, approval gates, scheduled run results.
+- **Notification Service** — Desktop notifications for pipeline events, approval gates, budget alerts, scheduled run results.
 
 ### IPC Bridge
 
@@ -158,11 +183,36 @@ interface CommanderAPI {
     stop(): Promise<void>;
   };
 
+  // Cost tracking & guardrails
+  costs: {
+    getCurrentRun(): Promise<CostSnapshot | null>;
+    getHistory(): Promise<CostHistory>;
+    setBudget(tokens: number): Promise<void>;
+    approveBudgetOverride(runId: string): Promise<void>;
+  };
+
+  // Telemetry (live activity stream)
+  telemetry: {
+    getAgentMetrics(): Promise<AgentMetrics[]>;
+    getTeamStats(): Promise<TeamStats>;
+    getLiveLog(limit?: number): Promise<LogEntry[]>;
+  };
+
+  // Runner registry
+  runners: {
+    list(): Promise<RunnerConfig[]>;
+    add(config: RunnerConfig): Promise<void>;
+    update(name: string, config: Partial<RunnerConfig>): Promise<void>;
+    remove(name: string): Promise<void>;
+    detect(): Promise<DetectedRunner[]>;
+  };
+
   // Settings
   settings: {
     get(): Promise<AppSettings>;
     update(settings: Partial<AppSettings>): Promise<void>;
-    detectAgentRunner(): Promise<string | null>;
+    getHooks(): Promise<HookConfig[]>;
+    updateHooks(hooks: HookConfig[]): Promise<void>;
   };
 
   // Events (renderer subscribes to main process events)
@@ -206,12 +256,13 @@ interface CommanderAPI {
 - Visual distinction from org chart: vertical layout, rectangular step blocks, colored connectors
 - Left panel: palette of available step types and agents
 
-**Step Types (6):**
+**Step Types (7):**
 
 | Type | Icon | Description |
 |------|------|-------------|
 | **Task** | 🔧 | An agent executes a prompt. Core building block. |
 | **Condition** | 🔀 | Evaluates previous step result. Routes to true/false branch. |
+| **Router** | 🧭 | Dynamic dispatch: evaluates output and picks from N possible next steps. Like Condition but multi-way. |
 | **Approval Gate** | 🖐️ | Pauses execution for human review. |
 | **Parallel** | ⚡ | Fan-out: run multiple steps simultaneously. Fan-in: wait for all to complete. |
 | **Loop** | 🔄 | Repeat a step/group until a condition is met (max iterations as safety). |
@@ -227,6 +278,12 @@ interface CommanderAPI {
 - Expression: `step.{id}.success` (boolean) or `step.{id}.output.contains("text")`
 - True target → step id
 - False target → step id
+
+**Router Step Configuration:**
+- Evaluates previous step output against N named routes
+- Each route: label + match expression + target step id
+- Default/fallback route for unmatched output
+- Example: output contains "critical" → hotfix branch, "minor" → backlog branch, default → standard branch
 
 **Parallel Step Configuration:**
 - List of child step IDs to run simultaneously
@@ -590,11 +647,13 @@ squad-commander/
 │   ├── main/                    # Electron main process
 │   │   ├── index.ts             # Entry point, window management, tray
 │   │   ├── preload.ts           # contextBridge IPC (no nodeIntegration)
-│   │   ├── squad-service.ts     # Squad SDK + fallback markdown parsing
-│   │   ├── file-watcher.ts      # chokidar on .squad/ with debounce
+│   │   ├── squad-bridge.ts      # Squad SDK + fallback parsing + CLI command adapter
+│   │   ├── file-watcher.ts      # chokidar on .squad/ + log/ + orchestration-log/
 │   │   ├── pipeline-engine.ts   # Step execution, branching, parallel, loops
-│   │   ├── agent-runner.ts      # Configurable CLI process spawning
-│   │   ├── context-builder.ts   # Generates context files (charter + prompt + prior output)
+│   │   ├── runner-registry.ts   # Extensible agent runner registry
+│   │   ├── context-builder.ts   # Context files (charter + prompt + decisions + prior output)
+│   │   ├── cost-tracker.ts      # Token parsing, budget enforcement (Phase 5)
+│   │   ├── telemetry-aggregator.ts # Live activity stream from .squad/log/ (Phase 4)
 │   │   ├── scheduler.ts         # node-cron schedule management
 │   │   ├── ralph-monitor.ts     # Detect and monitor Ralph watch process
 │   │   └── notification.ts      # Desktop notification dispatch
@@ -605,20 +664,23 @@ squad-commander/
 │   │   │   ├── squad-store.ts   # Team, agents, routing state
 │   │   │   ├── pipeline-store.ts # Pipelines, runs, execution state
 │   │   │   ├── schedule-store.ts # Schedules
-│   │   │   └── settings-store.ts # App settings
+│   │   │   ├── cost-store.ts    # Token usage and budget state (Phase 5)
+│   │   │   └── settings-store.ts # App settings + runner configs
 │   │   ├── views/
 │   │   │   ├── CanvasView.tsx   # Org chart + Quick Run panel
 │   │   │   ├── PipelineView.tsx # Pipeline list, builder, execution monitor
 │   │   │   ├── ScheduleView.tsx # Schedule manager + run history
-│   │   │   ├── DashboardView.tsx # Agent activity + Ralph monitor
+│   │   │   ├── DashboardView.tsx # Agent activity + Ralph monitor + telemetry
 │   │   │   ├── DecisionLogView.tsx
-│   │   │   └── SettingsView.tsx
+│   │   │   ├── CostView.tsx     # Cost monitor + budget config (Phase 5)
+│   │   │   └── SettingsView.tsx # Settings + runner registry + hook config
 │   │   ├── components/
 │   │   │   ├── canvas/          # OrgChartNode, AgentInspector, QuickRunPanel
 │   │   │   ├── pipeline/        # StepNode, StepPalette, PipelineCanvas, VariableEditor
 │   │   │   ├── execution/       # RunMonitor, OutputPanel, ApprovalGateDialog
 │   │   │   ├── editor/          # CharterEditor (Monaco wrapper), YamlValidator
-│   │   │   ├── dashboard/       # AgentCard, TeamStats, RalphStatus, Sparkline
+│   │   │   ├── dashboard/       # AgentCard, TeamStats, RalphStatus, Sparkline, LiveLog
+│   │   │   ├── cost/            # CostBadge, BudgetGauge, TokenBreakdown (Phase 5)
 │   │   │   └── common/          # Button, Modal, Sidebar, Notification badge
 │   │   └── styles/
 │   │       ├── theme.ts         # Light/dark theme tokens
@@ -626,20 +688,24 @@ squad-commander/
 │   └── shared/                  # Types shared between main/renderer
 │       ├── types.ts             # Core domain types
 │       ├── ipc-channels.ts      # IPC channel name constants
-│       └── pipeline-schema.ts   # Pipeline JSON schema (Zod)
+│       ├── pipeline-schema.ts   # Pipeline JSON schema (Zod)
+│       └── runner-types.ts      # Runner registry types
 ├── templates/                   # Built-in pipeline templates
 │   ├── code-review.json
 │   ├── build-and-test.json
 │   ├── research-and-write.json
 │   └── multi-reviewer.json
 ├── docs/
-│   └── specs/
-│       └── 2026-04-13-squad-commander-design.md
+│   ├── specs/
+│   │   └── 2026-04-13-squad-commander-design.md
+│   └── ROADMAP.md               # Phase roadmap with milestones
 └── test/
     ├── main/
     │   ├── pipeline-engine.test.ts   # Core pipeline logic
-    │   ├── context-builder.test.ts   # Context file generation
-    │   ├── squad-service.test.ts     # SDK + fallback parsing
+    │   ├── context-builder.test.ts   # Context file generation + decisions.md
+    │   ├── squad-bridge.test.ts      # SDK + fallback parsing + CLI adapter
+    │   ├── runner-registry.test.ts   # Runner config, spawn, lifecycle
+    │   ├── cost-tracker.test.ts      # Token parsing, budget enforcement
     │   └── scheduler.test.ts         # Cron schedule management
     └── renderer/
         ├── CanvasView.test.tsx
@@ -654,36 +720,39 @@ squad-commander/
 **Goal:** See your team, edit charters, run a single agent — immediately useful.
 
 - Electron + React + Vite scaffolding with contextBridge security model
-- Squad Service: read `.squad/` files (SDK with gray-matter fallback)
-- File watcher (chokidar, debounced) for live sync
+- **Squad Bridge** (`squad-bridge.ts`): read `.squad/` files via SDK with gray-matter fallback. Translate UI actions to SDK/CLI calls. Conflict detection for bidirectional sync.
+- File watcher (chokidar, debounced) for live sync on `.squad/`
 - Org chart canvas (React Flow + dagre, horizontal tree layout)
-- Agent inspector panel (charter summary, routing, decisions)
+- Agent inspector panel (charter summary, routing, recent decisions)
 - Monaco charter editor with YAML validation + autosave
 - Quick Run panel: select agent → type prompt → execute → see output
-- Agent Runner module: configurable CLI spawning with process lifecycle management
-- Context Builder: generates context file from charter + prompt
-- Settings view (project selector, agent runner config, theme)
-- **Tests:** squad-service parsing, context-builder, agent-runner process mocking
+- **Runner Registry** (`runner-registry.ts`): extensible pattern with Copilot CLI as the default runner. Each runner defines command, flags, context format, output capture, and token parsing patterns.
+- **Context Builder** (`context-builder.ts`): generates context file from charter + prompt. Includes relevant decisions from `decisions.md` (Persistence Layer — source of truth).
+- Settings view (project selector, runner config, theme)
+- **Tests:** squad-bridge parsing, context-builder, runner-registry mocking
 
 ### Phase 2: Pipeline Builder + Execution
 **Goal:** Build and run multi-step agent workflows visually.
 
 - Pipeline builder canvas (vertical flowchart, distinct from org chart)
 - Step palette: Task, Condition, Approval Gate, Parallel, Loop, Delay
+- **Task steps include optional `engine` field** — defaults to the project's default runner. Architecture supports multiple runners from day one even though only one ships initially.
 - Drag-drop step creation and edge connection
 - Step configuration panels (prompt, agent, timeout, variables)
 - Pipeline variables (template parameters with `{{var}}` syntax)
-- Pipeline validation (unreachable nodes, missing connections, etc.)
+- Pipeline validation (unreachable nodes, missing connections, invalid agent refs)
 - Pipeline JSON persistence in `.squad/pipelines/`
-- Pipeline Engine: sequential execution, condition evaluation, context handoff
-- Parallel step execution (spawn multiple processes, fan-in)
-- Loop step execution (repeat with iteration tracking)
+- **Pipeline Engine**: sequential execution, condition evaluation, context handoff
+  - Reads `decisions.md` before delegating work to any agent
+  - Writes decisions back after step completion
+- Parallel step execution (spawn multiple runner processes, fan-in)
+- Loop step execution (repeat with iteration tracking, max iterations safety)
 - Run directory with context files, stdout logs, output files
 - Real-time status updates via IPC
 - Output panel with live stdout/stderr
 - Pause/resume/cancel controls
 - Built-in pipeline templates (4)
-- **Tests:** pipeline-engine (all step types, branching, error handling), pipeline validation
+- **Tests:** pipeline-engine (all step types, branching, loops, parallel, error handling), pipeline validation
 
 ### Phase 3: Automation
 **Goal:** Pipelines run on their own with human checkpoints.
@@ -702,14 +771,47 @@ squad-commander/
 **Goal:** Understand what your team has been doing. Ship it.
 
 - Agent activity dashboard (cards, stats, sparklines)
-- Ralph monitor (detect running watch, show status, start/stop)
-- Decision log viewer (timeline, search, filters)
+- **Telemetry Aggregator** (`telemetry-aggregator.ts`): watches `.squad/log/` and `.squad/orchestration-log/` for live activity. Pushes real-time stream to Dashboard via IPC.
+- Ralph monitor (detect running watch process, show status, start/stop from UI)
+- Decision log viewer (timeline, search, filters, links to pipeline runs)
 - Export/import (`.squad-export.json`)
 - Electron packaging (electron-builder, Windows + macOS + Linux)
 - Dependabot config for SDK updates
 - CI workflow (GitHub Actions: build, test, lint)
-- E2E tests with Playwright (open project → view chart → create pipeline → run)
-- **Tests:** E2E flows, export/import round-trip
+- E2E tests with Playwright
+- **Tests:** E2E flows, export/import round-trip, telemetry aggregation
+
+### Phase 5: Guardrails + Governance
+**Goal:** Safe, cost-aware execution at scale.
+
+- **Cost Tracker** (`cost-tracker.ts`): parses token usage from runner stdout using runner-specific patterns. Accumulates per-step and per-run totals. Estimates cost via configurable model pricing.
+- **Budget enforcement modes** (user-configurable per pipeline):
+  - **Approve to continue** (default) — pauses pipeline at threshold, shows cost summary, user clicks Continue (with optional new budget) or Cancel
+  - **Notify only** — warns when threshold is hit but doesn't pause. Desktop notification + in-app banner.
+  - **Auto-cancel** — hard kill at threshold. No prompt. For unattended scheduled runs with strict limits.
+  - **Disabled** — no cost enforcement. For pipelines where budget isn't a concern.
+- **Budget granularity**:
+  - Per-pipeline budget: overall token/cost limit for the entire run
+  - Per-step budget: individual step limits (e.g., research steps get more tokens than formatting steps)
+  - Global budget: across all pipeline runs in a time period (daily/weekly/monthly cap)
+- **Cost Monitor UI**: real-time token/cost gauge during pipeline execution. Per-step breakdown. Historical cost per pipeline with charts.
+- **Cost reporting**: exportable cost history (CSV/JSON). Filter by pipeline, date range, agent. Tracks cost trends over time.
+- **HookPipeline integration**: UI for configuring Squad's built-in hooks:
+  - PII scrubbing (toggle, custom patterns)
+  - Reviewer lockout (prevent same agent from writing + approving)
+  - File-write guards (restrict which files agents can modify)
+- Hook configuration persisted in `.squad/commander.json`
+- Additional runner engines can be added via Settings (extensible runner registry)
+- **Tests:** cost-tracker token parsing, all budget enforcement modes, hook config persistence
+
+### Phase 6: External Integrations
+**Goal:** Commander connects to the outside world.
+
+- **MCP server connector**: access external data sources (Google Drive, Jira, ADO) from pipeline steps. Pipeline steps can declare MCP dependencies.
+- **Webhook triggers**: expose HTTP endpoint to trigger pipelines from external services (CI/CD, GitHub webhooks, etc.)
+- **Notification channels**: beyond desktop — Teams, Slack, email notifications for pipeline events
+- **External action items**: monitor Teams channels / email for action items that can be routed to Squad agents (inspired by Squad's existing Teams/Email skills)
+- **Tests:** MCP connector mocking, webhook endpoint, notification channel dispatch
 
 ---
 
@@ -717,16 +819,17 @@ squad-commander/
 
 | Layer | Tool | What we test | When |
 |-------|------|-------------|------|
-| Unit | Vitest | Pipeline engine logic, context builder, condition evaluation, SDK parsing, schedule management | Phase 1+ |
-| Component | React Testing Library | Step palette interactions, form validation, node rendering, inspector panel | Phase 1+ |
-| Integration | Vitest + mock IPC | Main ↔ renderer communication, file watcher events, store updates | Phase 2+ |
+| Unit | Vitest | Pipeline engine, context builder, condition eval, squad-bridge parsing, scheduler, cost-tracker, telemetry | Phase 1+ |
+| Component | React Testing Library | Step palette, form validation, node rendering, inspector panel, cost monitor | Phase 1+ |
+| Integration | Vitest + mock IPC | Main ↔ renderer communication, file watcher events, store updates, runner registry | Phase 2+ |
 | E2E | Playwright (Electron) | Full app flows: open project → view org chart → create pipeline → run pipeline | Phase 4 |
 
 **Test priorities (highest first):**
 1. Pipeline engine — most complex logic, all step types, error cases
-2. Context builder — correctness of generated context files
+2. Context builder — correctness of generated context files, decisions.md inclusion
 3. Condition evaluation — branching logic must be deterministic
-4. Squad service — SDK parsing + fallback parsing both work correctly
+4. Squad bridge — SDK parsing + fallback parsing both work correctly
+5. Cost tracker — token parsing accuracy, budget enforcement
 
 ---
 
@@ -736,17 +839,41 @@ squad-commander/
 - **No nodeIntegration** in renderer. All Node.js access via contextBridge preload.
 - File system access only through IPC handlers in main process.
 - Agent runner processes are sandboxed to the project's working directory.
+- HookPipeline PII scrubbing applied before context files are written (Phase 5).
 
 ### Process Management
-- Agent runner tracks all spawned child processes by PID.
+- Runner registry tracks all spawned child processes by PID.
 - App exit handler: kill all child processes on quit.
 - Process timeout: configurable per step, default 5 minutes.
 - Orphan detection: on startup, check for stale PID files from crashed runs.
+- Cost tracker monitors total token usage across ALL active processes.
+
+### Persistence Layer
+- `decisions.md` is the source of truth for team decisions.
+- Context builder reads decisions before every pipeline step delegation.
+- Pipeline engine appends new decisions after step completion.
+- Decision log viewer provides searchable UI over this file.
+
+### Runner Registry Architecture
+```typescript
+interface RunnerConfig {
+  name: string;              // e.g., "copilot-cli"
+  command: string;           // e.g., "gh copilot"
+  flags: string[];           // e.g., ["--agent", "squad", "--yolo"]
+  contextFormat: "squad-charter" | "plain-prompt"; // how to build context file
+  outputCapture: "stdout" | "file";               // how to capture results
+  tokenPattern?: RegExp;     // regex to parse token usage from stdout
+  isDefault: boolean;
+}
+```
+- Ships with one runner: Copilot CLI (`gh copilot`)
+- Users can add custom runners via Settings (Phase 5+)
+- Pipeline steps can specify a runner; unspecified steps use the project default
 
 ### Windows-Specific
 - chokidar may need `usePolling: true` on some Windows file systems.
-- Agent runner uses PowerShell for process spawning.
-- File paths use backslashes; normalize in Squad Service.
+- Runner processes spawn via PowerShell.
+- File paths normalized in Squad Bridge.
 
 ### macOS-Specific
 - App is unsigned for local dev; notarization needed for distribution.
@@ -758,9 +885,13 @@ squad-commander/
 
 | Question | Decision |
 |----------|----------|
-| How complex should condition expressions be? | Start simple: `step.{id}.success` boolean + `step.{id}.output.contains("text")`. Add expression parser in v2 if needed. |
-| Support multiple projects simultaneously? | Single project at a time in v1. Project switcher for convenience. |
-| How to invoke agent steps? | Generate context files (charter + prompt + prior output), invoke configurable agent runner CLI. Bypass Squad's routing for deterministic execution. |
+| How complex should condition expressions be? | Start simple: `step.{id}.success` boolean + `step.{id}.output.contains("text")`. Add expression parser later if needed. |
+| Support multiple projects simultaneously? | Single project at a time. Project switcher for convenience. |
+| How to invoke agent steps? | Generate context files (charter + prompt + decisions + prior output), invoke runner from registry. Bypass Squad's routing for deterministic execution. |
 | How to handle context between steps? | File-based: each run gets a directory, each step writes output to `output-{stepId}.md`, next step reads it. |
 | Relationship with Ralph? | Complementary. Commander monitors Ralph status but doesn't replace it. Pipelines are workflow chains; Ralph handles issue triage. |
-| One pipeline at a time? | Yes for v1. Queue additional runs; don't allow concurrent pipeline execution. |
+| One pipeline at a time? | Yes initially. Queue additional runs; don't allow concurrent pipeline execution. |
+| Relationship with ATM? | Fully standalone. No code dependency. Watch for UX inspiration only. |
+| How to handle token costs? | Cost Tracker parses token counts from runner stdout. Budget exceeded = auto-triggered approval gate. |
+| Multiple runner engines? | Runner registry is extensible from Phase 1. Only Copilot CLI ships initially. Users can add runners via Settings in Phase 5+. |
+| decisions.md role? | Source of truth. Context builder reads before delegation. Pipeline engine writes after completion. |
