@@ -8,6 +8,9 @@ import { PipelinePersistence } from './pipeline-persistence';
 import { PipelineEngine } from './pipeline-engine';
 import { Scheduler } from './scheduler';
 import { SystemTray } from './system-tray';
+import { TelemetryAggregator } from './telemetry-aggregator';
+import { RalphMonitor } from './ralph-monitor';
+import { ExportImport } from './export-import';
 import { NotificationService } from './notification';
 import { IPC } from '../shared/ipc-channels';
 import { randomUUID } from 'crypto';
@@ -20,6 +23,9 @@ let contextBuilder: ContextBuilder | null = null;
 let pipelinePersistence: PipelinePersistence | null = null;
 let pipelineEngine: PipelineEngine | null = null;
 let scheduler: Scheduler | null = null;
+let telemetry: TelemetryAggregator | null = null;
+let ralphMonitor: RalphMonitor | null = null;
+let exportImport: ExportImport | null = null;
 const systemTray = new SystemTray();
 const notifications = new NotificationService();
 
@@ -124,6 +130,18 @@ function initProject(projectPath: string): void {
       notifications.scheduleCompleted(scheduleId, false);
     });
   }
+
+  // Initialize telemetry
+  if (telemetry) telemetry.stop();
+  telemetry = new TelemetryAggregator(squadBridge.squadDir);
+  telemetry.start();
+
+  // Initialize Ralph monitor
+  if (ralphMonitor) ralphMonitor.destroy();
+  ralphMonitor = new RalphMonitor(projectPath);
+
+  // Initialize export/import
+  exportImport = new ExportImport(squadBridge.squadDir);
 }
 
 // ─── IPC Handlers: Squad State ───────────────────────────────────────────────
@@ -324,6 +342,52 @@ ipcMain.handle('schedules:toggle', async (_event, id: string, enabled: boolean) 
   return scheduler.toggle(id, enabled);
 });
 
+// ─── IPC Handlers: Telemetry & Dashboard ─────────────────────────────────────
+
+ipcMain.handle('telemetry:getAgentMetrics', async () => {
+  if (!telemetry || !squadBridge) return [];
+  const agents = await squadBridge.getAgents();
+  return telemetry.getAgentMetrics(agents.map((a) => ({ name: a.name, role: a.role })));
+});
+
+ipcMain.handle('telemetry:getTeamStats', async () => {
+  if (!telemetry) return null;
+  return telemetry.getTeamStats();
+});
+
+ipcMain.handle('telemetry:getLiveLog', async (_event, limit?: number) => {
+  if (!telemetry) return [];
+  return telemetry.getLiveLog(limit);
+});
+
+// ─── IPC Handlers: Ralph ─────────────────────────────────────────────────────
+
+ipcMain.handle('ralph:getStatus', async () => {
+  return ralphMonitor?.getStatus() || { running: false, pid: null, uptime: null, lastPoll: null };
+});
+
+ipcMain.handle('ralph:start', async (_event, options?: { interval?: number; execute?: boolean }) => {
+  if (!ralphMonitor) throw new Error('No project open');
+  ralphMonitor.start(options);
+});
+
+ipcMain.handle('ralph:stop', async () => {
+  ralphMonitor?.stop();
+});
+
+// ─── IPC Handlers: Export/Import ─────────────────────────────────────────────
+
+ipcMain.handle('export:export', async (_event, outputPath: string) => {
+  if (!exportImport) throw new Error('No project open');
+  await exportImport.exportToFile(outputPath);
+  return true;
+});
+
+ipcMain.handle('export:import', async (_event, inputPath: string, mode?: 'overwrite' | 'skip') => {
+  if (!exportImport) throw new Error('No project open');
+  return exportImport.importFromFile(inputPath, mode);
+});
+
 // ─── IPC Handlers: Settings ──────────────────────────────────────────────────
 
 ipcMain.handle(IPC.SETTINGS_GET, async () => {
@@ -379,6 +443,8 @@ app.on('activate', () => {
 app.on('before-quit', () => {
   runnerRegistry.killAll();
   scheduler?.stopAll();
+  telemetry?.stop();
+  ralphMonitor?.destroy();
   fileWatcher?.stop();
   systemTray.destroy();
 });

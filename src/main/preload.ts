@@ -68,6 +68,26 @@ contextBridge.exposeInMainWorld('commander', {
     toggle: (id: string, enabled: boolean) => ipcRenderer.invoke('schedules:toggle', id, enabled),
   },
 
+  // Telemetry & Dashboard
+  telemetry: {
+    getAgentMetrics: () => ipcRenderer.invoke('telemetry:getAgentMetrics'),
+    getTeamStats: () => ipcRenderer.invoke('telemetry:getTeamStats'),
+    getLiveLog: (limit?: number) => ipcRenderer.invoke('telemetry:getLiveLog', limit),
+  },
+
+  // Ralph
+  ralph: {
+    getStatus: () => ipcRenderer.invoke('ralph:getStatus'),
+    start: (options?: unknown) => ipcRenderer.invoke('ralph:start', options),
+    stop: () => ipcRenderer.invoke('ralph:stop'),
+  },
+
+  // Export/Import
+  exportImport: {
+    export: (outputPath: string) => ipcRenderer.invoke('export:export', outputPath),
+    import: (inputPath: string, mode?: string) => ipcRenderer.invoke('export:import', inputPath, mode),
+  },
+
   // Events — renderer subscribes to main process events
   on: (channel: string, callback: (...args: unknown[]) => void) => {
     const validChannels = [
