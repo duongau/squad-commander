@@ -1,6 +1,10 @@
 # Squad Commander — User Guide
 
-Your everyday guide to managing AI agent teams with Squad Commander.
+> **This guide has moved to the wiki for easier navigation and updates.**
+>
+> 👉 **[Read the full User Guide on the Wiki](https://github.com/duongau/squad-commander/wiki)**
+>
+> Start with [01 — Getting started](https://github.com/duongau/squad-commander/wiki/01-Getting-started).
 
 ---
 

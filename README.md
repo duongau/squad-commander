@@ -29,7 +29,11 @@ Squad Commander is a desktop app + CLI that gives you visual control over your S
 
 ## Quick Start
 
-### Desktop App
+### Option 1: Desktop App (built)
+
+If you've already built the app, just double-click **Squad Commander** on your Desktop.
+
+### Option 2: Dev Mode (hot reload)
 
 ```bash
 git clone https://github.com/duongau/squad-commander.git
@@ -37,6 +41,15 @@ cd squad-commander
 npm install
 npm run dev
 ```
+
+### Option 3: Build the desktop app yourself
+
+```bash
+npm run build
+npx electron-builder --win --dir
+```
+
+The executable is at `release\win-unpacked\Squad Commander.exe`. Create a Desktop shortcut to it.
 
 Then open a Squad project from the app (Settings → Open Project).
 
@@ -49,6 +62,8 @@ npx squad-commander team          # Show team roster
 npx squad-commander run my-pipe   # Run a pipeline
 npx squad-commander status        # Check run status
 ```
+
+> **📖 Full guide:** [Wiki](https://github.com/duongau/squad-commander/wiki) — start with [[01 Getting started]]
 
 ---
 
@@ -159,7 +174,7 @@ squad-commander/
 
 ## Documentation
 
-- **[User Guide](docs/USER-GUIDE.md)** — how to use Commander for everyday work
+- **[📖 Wiki](https://github.com/duongau/squad-commander/wiki)** — complete user guide (start here!)
 - **[Design Specification](docs/specs/2026-04-13-squad-commander-design.md)** — full technical design
 - **[Roadmap](docs/ROADMAP.md)** — implementation phases + future enhancements
 - **[Competitive Analysis](docs/COMPETITORS.md)** — vs CrewAI, PolyPilot, ATM
