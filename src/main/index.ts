@@ -11,6 +11,7 @@ import { SystemTray } from './system-tray';
 import { TelemetryAggregator } from './telemetry-aggregator';
 import { RalphMonitor } from './ralph-monitor';
 import { ExportImport } from './export-import';
+import { CostTracker } from './cost-tracker';
 import { NotificationService } from './notification';
 import { IPC } from '../shared/ipc-channels';
 import { randomUUID } from 'crypto';
@@ -26,6 +27,7 @@ let scheduler: Scheduler | null = null;
 let telemetry: TelemetryAggregator | null = null;
 let ralphMonitor: RalphMonitor | null = null;
 let exportImport: ExportImport | null = null;
+const costTracker = new CostTracker();
 const systemTray = new SystemTray();
 const notifications = new NotificationService();
 
@@ -340,6 +342,46 @@ ipcMain.handle('schedules:delete', async (_event, id: string) => {
 ipcMain.handle('schedules:toggle', async (_event, id: string, enabled: boolean) => {
   if (!scheduler) return null;
   return scheduler.toggle(id, enabled);
+});
+
+// ─── IPC Handlers: Cost Tracking ─────────────────────────────────────────────
+
+ipcMain.handle('costs:getCurrentRun', async () => {
+  return costTracker.getCurrentSnapshot();
+});
+
+ipcMain.handle('costs:getHistory', async () => {
+  return costTracker.getHistory();
+});
+
+ipcMain.handle('costs:getConfig', async () => {
+  return costTracker.getConfig();
+});
+
+ipcMain.handle('costs:updateConfig', async (_event, updates: Record<string, unknown>) => {
+  costTracker.updateConfig(updates);
+});
+
+ipcMain.handle('costs:setBudget', async (_event, tokens: number) => {
+  costTracker.setBudget(tokens);
+});
+
+ipcMain.handle('costs:getDailyUsage', async () => {
+  return costTracker.getDailyUsage();
+});
+
+// Wire cost tracker events to renderer
+costTracker.on('cost:update', (snapshot: unknown) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('cost:update', snapshot);
+  }
+});
+
+costTracker.on('cost:budget-exceeded', (snapshot: unknown) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('cost:budget-exceeded', snapshot);
+  }
+  notifications.send('Budget Exceeded', 'Pipeline token budget has been exceeded', 'warning');
 });
 
 // ─── IPC Handlers: Telemetry & Dashboard ─────────────────────────────────────

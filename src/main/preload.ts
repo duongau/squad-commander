@@ -88,6 +88,16 @@ contextBridge.exposeInMainWorld('commander', {
     import: (inputPath: string, mode?: string) => ipcRenderer.invoke('export:import', inputPath, mode),
   },
 
+  // Cost Tracking
+  costs: {
+    getCurrentRun: () => ipcRenderer.invoke('costs:getCurrentRun'),
+    getHistory: () => ipcRenderer.invoke('costs:getHistory'),
+    getConfig: () => ipcRenderer.invoke('costs:getConfig'),
+    updateConfig: (updates: unknown) => ipcRenderer.invoke('costs:updateConfig', updates),
+    setBudget: (tokens: number) => ipcRenderer.invoke('costs:setBudget', tokens),
+    getDailyUsage: () => ipcRenderer.invoke('costs:getDailyUsage'),
+  },
+
   // Events — renderer subscribes to main process events
   on: (channel: string, callback: (...args: unknown[]) => void) => {
     const validChannels = [
@@ -97,6 +107,8 @@ contextBridge.exposeInMainWorld('commander', {
       'run:complete',
       'run:error',
       'schedule:event',
+      'cost:update',
+      'cost:budget-exceeded',
     ];
     if (validChannels.includes(channel)) {
       const listener = (_event: unknown, ...args: unknown[]) =>
